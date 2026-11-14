@@ -1,0 +1,9 @@
+# 最小化 cibuildwheel 配置
+#
+# 目的：numpy / pandas 的 sdist 自带 [tool.cibuildwheel] 段落，其中引用了
+# 当前 cibuildwheel 版本不认识的 enable 组（cpython-freethreading），
+# 导致 "Failed to parse enable group" 错误。
+# 通过 --config-file 指定本文件后，sdist 内的自带配置将被完全忽略，
+# 所有构建参数仍由 workflow 中的 CIBW_* 环境变量控制。
+[tool.cibuildwheel]
+test-command = ""
