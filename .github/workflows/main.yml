@@ -1,0 +1,99 @@
+name: Build Android wheels (numpy 2.3.x + pandas 2.3.x / Python 3.13 / arm64-v8a)
+# ============================================================
+# 用途：交叉编译适用于安卓 arm64-v8a 的 numpy 2.3.x 与 pandas 2.3.x
+#      wheel（Python 3.13，平台标签 android_24_arm64_v8a）。
+#
+# 原理：Chaquopy 官方 README 指定 Python 3.13+ 的 Android wheel
+#      用 cibuildwheel（--platform android）构建。它会自动：
+#        - 通过 sdkmanager 安装 NDK
+#        - 下载 CPython 3.13 官方 Android 交叉编译环境
+#        - 设置 CC/CFLAGS/sysconfigdata 等全部交叉编译环境变量
+#
+# 说明：Chaquopy 官方 wheel 仓库（https://chaquo.com/pypi-13.1/）
+#      目前最高只有 numpy 1.26.2 / pandas 2.1.3，没有 2.3.x，
+#      所以本 workflow 从 PyPI sdist 源码交叉编译。
+# ============================================================
+on:
+  workflow_dispatch:
+    inputs:
+      numpy_version:
+        description: 'numpy 版本'
+        required: false
+        default: '2.3.4'
+      pandas_version:
+        description: 'pandas 版本'
+        required: false
+        default: '2.3.3'
+  push:
+    paths:
+      - '.github/workflows/build-android-wheels.yml'
+permissions:
+  contents: read
+env:
+  # cibuildwheel Android 构建读取此变量设定最低 API 级别（默认即 24，
+  # 支持 99% 活跃设备，且是 auditwheel 修复 RUNPATH 所需的最低版本）
+  ANDROID_API_LEVEL: "24"
+jobs:
+  build:
+    name: ${{ matrix.package }} ${{ matrix.version }} · py3.13 · android arm64_v8a
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: numpy
+            version: ${{ inputs.numpy_version || '2.3.4' }}
+          - package: pandas
+            version: ${{ inputs.pandas_version || '2.3.3' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      # GitHub Actions ubuntu runner 自带 Android SDK（ANDROID_HOME 已设）
+      # 和 java，cibuildwheel 会自动用 sdkmanager 安装所需 NDK 并接受许可。
+      - name: Install cibuildwheel (Android 支持需 6.0+)
+        run: pipx install "cibuildwheel==6.*"
+      - name: Download ${{ matrix.package }} ${{ matrix.version }} sdist
+        run: |
+          mkdir -p src
+          pip download ${{ matrix.package }}==${{ matrix.version }} \
+            --no-binary :all: --no-deps -d sdist
+          tar -C src -xf sdist/${{ matrix.package }}-*.tar.gz --strip-components=1
+          ls src
+      # ---- 核心构建步骤：cibuildwheel Android 交叉编译 ----
+      # 关键环境变量：
+      #   ANDROID_API_LEVEL=24        → wheel 平台标签 android_24_arm64_v8a
+      #   CIBW_PLATFORM=android       → 启用 Android 交叉编译模式
+      #   CIBW_BUILD=cp313-*          → 只构建 Python 3.13
+      #   CIBW_ARCHS=arm64_v8a        → 只构建 arm64-v8a
+      #   CIBW_BUILD_FRONTEND=build[uv] → Android 不支持 pip 前端，必须用 build
+      #   CIBW_TEST_COMMAND=""        → 跳过模拟器测试（只出 wheel，不跑测试）
+      - name: Build wheel (android_24_arm64_v8a · cp313)
+        env:
+          CIBW_PLATFORM: android
+          CIBW_BUILD: "cp313-*"
+          CIBW_ARCHS: "arm64_v8a"
+          CIBW_BUILD_FRONTEND: "build[uv]"
+          CIBW_TEST_COMMAND: ""
+        run: cibuildwheel src --output-dir wheelhouse
+      - name: Inspect wheel
+        run: |
+          ls -lh wheelhouse
+          python -m zipfile -l wheelhouse/*.whl | head -30
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.package }}-${{ matrix.version }}-cp313-android_24_arm64_v8a
+          path: wheelhouse/*.whl
+          if-no-files-found: error
+          retention-days: 30
+  # ============================================================
+  # 说明：pandas 交叉编译时，numpy 的 C 头文件来自构建环境的
+  # numpy（平台无关），因此 numpy / pandas 两个 job 可并行，
+  # 无需先出 numpy wheel 再编 pandas。
+  # 若某个包在 Android 上编译失败（缺 bionic 适配补丁），
+  # 参考 https://github.com/chaquo/chaquopy/issues?q=label%3Aupstreamed
+  # 中已上游化的补丁思路，用 CIBW_BEFORE_BUILD 打补丁。
+  # ============================================================
