@@ -56,6 +56,9 @@ jobs:
       # cibuildwheel 的 Android 支持在 3.x 起提供，最新稳定版为 4.x
       - name: Install cibuildwheel (Android support)
         run: pipx install "cibuildwheel>=3.4"
+      # cibuildwheel 的 Android 构建不支持 pip 前端，需用 uv 安装构建依赖
+      - name: Install uv (required by Android build frontend)
+        run: pipx install uv
       - name: Download ${{ matrix.package }} ${{ matrix.version }} sdist
         run: |
           mkdir -p src
