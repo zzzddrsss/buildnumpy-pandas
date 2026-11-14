@@ -53,8 +53,9 @@ jobs:
           python-version: "3.13"
       # GitHub Actions ubuntu runner 自带 Android SDK（ANDROID_HOME 已设）
       # 和 java，cibuildwheel 会自动用 sdkmanager 安装所需 NDK 并接受许可。
-      - name: Install cibuildwheel (Android 支持需 6.0+)
-        run: pipx install "cibuildwheel==6.*"
+      # cibuildwheel 的 Android 支持在 3.x 起提供，最新稳定版为 4.x
+      - name: Install cibuildwheel (Android support)
+        run: pipx install "cibuildwheel>=3.4"
       - name: Download ${{ matrix.package }} ${{ matrix.version }} sdist
         run: |
           mkdir -p src
