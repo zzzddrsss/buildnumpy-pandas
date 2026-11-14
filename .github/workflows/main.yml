@@ -78,7 +78,9 @@ jobs:
           CIBW_ARCHS: "arm64_v8a"
           CIBW_BUILD_FRONTEND: "build[uv]"
           CIBW_TEST_COMMAND: ""
-        run: cibuildwheel src --output-dir wheelhouse
+        # --config-file：忽略 sdist 自带的 [tool.cibuildwheel] 配置，
+        # 避免 numpy/pandas 引用未知 enable 组（cpython-freethreading）导致解析失败
+        run: cibuildwheel --config-file cibw-config.toml src --output-dir wheelhouse
       - name: Inspect wheel
         run: |
           ls -lh wheelhouse
